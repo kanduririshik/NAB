@@ -4,7 +4,19 @@ import { supabase } from '../lib/supabase';
 class EventHub {
   constructor() {
     this.listeners = {};
-    
+    this.channel = null;
+    this.initChannel();
+  }
+  
+  initChannel() {
+    if (typeof window === 'undefined') return;
+
+    if (this.channel) {
+      try {
+        supabase.removeChannel(this.channel);
+      } catch (e) {}
+    }
+
     // Set up Supabase Realtime channel to listen to all public database changes
     this.channel = supabase
       .channel('schema-db-changes')
@@ -34,7 +46,13 @@ class EventHub {
           }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setTimeout(() => {
+            this.initChannel();
+          }, 3000);
+        }
+      });
   }
   subscribe(event, callback) {
     if (!this.listeners[event]) this.listeners[event] = [];
@@ -993,6 +1011,17 @@ export const api = {
     if (opts.accuracy !== undefined && opts.accuracy !== null) payload.accuracy = parseFloat(opts.accuracy);
     if (opts.speed !== undefined && opts.speed !== null) payload.speed = parseFloat(opts.speed);
     if (opts.heading !== undefined && opts.heading !== null) payload.heading = parseFloat(opts.heading);
+
+    // Instant local cross-tab broadcast via BroadcastChannel
+    try {
+      if (typeof window !== 'undefined' && window.BroadcastChannel) {
+        const bc = new BroadcastChannel('nab_live_telemetry');
+        bc.postMessage({ type: 'LOCATION_UPDATE', payload });
+        bc.close();
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel error:', e);
+    }
 
     const { data, error } = await supabase
       .from('live_locations')

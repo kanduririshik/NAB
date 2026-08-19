@@ -12,9 +12,9 @@ export function loadGoogleMapsScript(apiKey) {
 
   if (loadPromise) return loadPromise;
 
-  const key = apiKey || import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const key = apiKey || localStorage.getItem('nab_google_maps_api_key') || import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   if (!key) {
-    return Promise.reject(new Error('VITE_GOOGLE_MAPS_API_KEY is not configured in .env'));
+    return Promise.reject(new Error('VITE_GOOGLE_MAPS_API_KEY is not configured in .env or custom settings'));
   }
 
   loadPromise = new Promise((resolve, reject) => {

@@ -117,6 +117,26 @@ export default function StaffActiveDeliveries() {
     }
   };
 
+  // Continuous heartbeat sync to keep GPS telemetry live even when device/laptop is stationary
+  useEffect(() => {
+    if (!isTracking || !gpsCoords || !staff?.id) return;
+
+    const interval = setInterval(() => {
+      const activeOrderForGps = outForDeliveryOrder?.orderId || null;
+      syncLocationToSupabase(
+        gpsCoords.latitude,
+        gpsCoords.longitude,
+        gpsCoords.accuracy,
+        gpsCoords.speed,
+        gpsCoords.heading,
+        activeOrderForGps,
+        true // force update
+      );
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [isTracking, gpsCoords?.latitude, gpsCoords?.longitude, staff?.id, outForDeliveryOrder?.orderId]);
+
   // Start Real Browser/Device GPS Tracking via navigator.geolocation.watchPosition
   const startLiveGpsTracking = (orderId = null) => {
     if (!('geolocation' in navigator)) {
