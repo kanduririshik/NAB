@@ -42,8 +42,8 @@ export default function Register() {
         createdAt: registeredUser.createdAt
       };
 
-      localStorage.setItem('nab_session_user', JSON.stringify(mockUser));
-      localStorage.removeItem('nab_session_profile');
+      sessionStorage.setItem('nab_session_user', JSON.stringify(mockUser));
+      sessionStorage.removeItem('nab_session_profile');
       
       const mockToken = `b2b-token-${Math.random().toString(36).substring(2)}`;
       setToken(mockToken);

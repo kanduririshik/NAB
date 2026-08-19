@@ -6,22 +6,30 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('nab_session_user');
+    const isCustomer = typeof window !== 'undefined' && !window.location.pathname.startsWith('/admin') && !window.location.pathname.startsWith('/staff');
+    if (!isCustomer) return null;
+    const saved = typeof window !== 'undefined' ? sessionStorage.getItem('nab_session_user') : null;
     return saved ? JSON.parse(saved) : null;
   });
   
   const [profile, setProfile] = useState(() => {
-    const saved = localStorage.getItem('nab_session_profile');
+    const isCustomer = typeof window !== 'undefined' && !window.location.pathname.startsWith('/admin') && !window.location.pathname.startsWith('/staff');
+    if (!isCustomer) return null;
+    const saved = typeof window !== 'undefined' ? sessionStorage.getItem('nab_session_profile') : null;
     return saved ? JSON.parse(saved) : null;
   });
 
   const [admin, setAdmin] = useState(() => {
-    const saved = localStorage.getItem('nab_session_admin');
+    const isAdmin = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
+    if (!isAdmin) return null;
+    const saved = typeof window !== 'undefined' ? sessionStorage.getItem('nab_session_admin') : null;
     return saved ? JSON.parse(saved) : null;
   });
 
   const [staff, setStaff] = useState(() => {
-    const saved = localStorage.getItem('nab_session_staff');
+    const isStaff = typeof window !== 'undefined' && window.location.pathname.startsWith('/staff');
+    if (!isStaff) return null;
+    const saved = typeof window !== 'undefined' ? sessionStorage.getItem('nab_session_staff') : null;
     return saved ? JSON.parse(saved) : null;
   });
 
@@ -30,24 +38,37 @@ export function AuthProvider({ children }) {
 
   // Handles session loading and role verification
   const handleSession = async (session) => {
+    if (!session || !session.user) return;
     const sessionUser = session.user;
     
-    // Get role
+    // Get role from user_roles
     const { data: roleData } = await supabase
       .from('user_roles')
       .select('role')
       .eq('user_id', sessionUser.id)
       .maybeSingle();
       
-    const role = roleData ? roleData.role : 'customer'; // default to customer
+    let role = roleData ? roleData.role : null;
+    if (!role) {
+      if (sessionUser.email === 'admin@nab.in' || sessionStorage.getItem('nab_session_admin')) {
+        role = 'admin';
+      } else if (sessionStorage.getItem('nab_session_staff') || (sessionUser.email?.endsWith('@nab.in') && sessionUser.email !== 'admin@nab.in')) {
+        role = 'staff';
+      } else {
+        role = 'customer';
+      }
+    }
     
     if (role === 'admin') {
       const adminObj = { id: sessionUser.id, email: sessionUser.email, role: 'admin' };
       setAdmin(adminObj);
-      localStorage.setItem('nab_session_admin', JSON.stringify(adminObj));
+      sessionStorage.setItem('nab_session_admin', JSON.stringify(adminObj));
       setUser(null);
       setProfile(null);
       setStaff(null);
+      sessionStorage.removeItem('nab_session_user');
+      sessionStorage.removeItem('nab_session_profile');
+      sessionStorage.removeItem('nab_session_staff');
     } else if (role === 'delivery_boy' || role === 'staff') {
       // Load agent details
       const { data: agent } = await supabase
@@ -56,27 +77,34 @@ export function AuthProvider({ children }) {
         .eq('id', sessionUser.id)
         .maybeSingle();
         
-      if (agent) {
-        const staffObj = {
-          id: agent.id,
-          fullName: agent.full_name,
-          username: agent.username,
-          phone: agent.phone,
-          email: agent.email,
-          address: agent.address,
-          vehicleType: agent.vehicle_type,
-          vehicleNumber: agent.vehicle_number,
-          employeeId: agent.employee_id,
-          profilePhoto: agent.profile_photo,
-          joiningDate: agent.joining_date,
-          status: agent.status
-        };
-        setStaff(staffObj);
-        localStorage.setItem('nab_session_staff', JSON.stringify(staffObj));
-      }
+      const staffObj = agent ? {
+        id: agent.id,
+        fullName: agent.full_name,
+        username: agent.username,
+        phone: agent.phone,
+        email: agent.email,
+        address: agent.address,
+        vehicleType: agent.vehicle_type,
+        vehicleNumber: agent.vehicle_number,
+        employeeId: agent.employee_id,
+        profilePhoto: agent.profile_photo,
+        joiningDate: agent.joining_date,
+        status: agent.status
+      } : {
+        id: sessionUser.id,
+        fullName: sessionUser.user_metadata?.full_name || 'Staff Member',
+        username: sessionUser.email?.split('@')[0] || 'staff',
+        email: sessionUser.email,
+        role: 'staff'
+      };
+      setStaff(staffObj);
+      sessionStorage.setItem('nab_session_staff', JSON.stringify(staffObj));
       setUser(null);
       setProfile(null);
       setAdmin(null);
+      sessionStorage.removeItem('nab_session_user');
+      sessionStorage.removeItem('nab_session_profile');
+      sessionStorage.removeItem('nab_session_admin');
     } else {
       // Customer
       const { data: customerProfile } = await supabase
@@ -88,7 +116,7 @@ export function AuthProvider({ children }) {
       const hasProfile = !!customerProfile;
       const userObj = { id: sessionUser.id, email: sessionUser.email, role: 'customer', profileCompleted: hasProfile };
       setUser(userObj);
-      localStorage.setItem('nab_session_user', JSON.stringify(userObj));
+      sessionStorage.setItem('nab_session_user', JSON.stringify(userObj));
       
       if (hasProfile) {
         const profileObj = {
@@ -104,13 +132,15 @@ export function AuthProvider({ children }) {
           updatedAt: customerProfile.updated_at
         };
         setProfile(profileObj);
-        localStorage.setItem('nab_session_profile', JSON.stringify(profileObj));
+        sessionStorage.setItem('nab_session_profile', JSON.stringify(profileObj));
       } else {
         setProfile(null);
-        localStorage.removeItem('nab_session_profile');
+        sessionStorage.removeItem('nab_session_profile');
       }
       setAdmin(null);
       setStaff(null);
+      sessionStorage.removeItem('nab_session_admin');
+      sessionStorage.removeItem('nab_session_staff');
     }
   };
 
@@ -119,9 +149,40 @@ export function AuthProvider({ children }) {
     let mounted = true;
     const initAuth = async () => {
       try {
+        const path = typeof window !== 'undefined' ? window.location.pathname : '';
+        const isAdmin = path.startsWith('/admin');
+        const isStaff = path.startsWith('/staff');
+
         const { data: { session } } = await supabase.auth.getSession();
         if (session && mounted) {
           await handleSession(session);
+        } else if (mounted) {
+          if (isAdmin) {
+            const savedAdmin = sessionStorage.getItem('nab_session_admin');
+            if (savedAdmin) {
+              setAdmin(JSON.parse(savedAdmin));
+              setUser(null);
+              setProfile(null);
+              setStaff(null);
+            }
+          } else if (isStaff) {
+            const savedStaff = sessionStorage.getItem('nab_session_staff');
+            if (savedStaff) {
+              setStaff(JSON.parse(savedStaff));
+              setUser(null);
+              setProfile(null);
+              setAdmin(null);
+            }
+          } else {
+            const savedUser = sessionStorage.getItem('nab_session_user');
+            if (savedUser) {
+              setUser(JSON.parse(savedUser));
+              const savedProfile = sessionStorage.getItem('nab_session_profile');
+              if (savedProfile) setProfile(JSON.parse(savedProfile));
+              setAdmin(null);
+              setStaff(null);
+            }
+          }
         }
       } catch (err) {
         console.error('Session restore error:', err);
@@ -134,16 +195,16 @@ export function AuthProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session) {
         await handleSession(session);
-      } else {
+      } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setProfile(null);
         setAdmin(null);
         setStaff(null);
-        localStorage.removeItem('nab_session_user');
-        localStorage.removeItem('nab_session_profile');
-        localStorage.removeItem('nab_session_admin');
-        localStorage.removeItem('nab_session_staff');
-        localStorage.removeItem('nab_access_token');
+        sessionStorage.removeItem('nab_session_user');
+        sessionStorage.removeItem('nab_session_profile');
+        sessionStorage.removeItem('nab_session_admin');
+        sessionStorage.removeItem('nab_session_staff');
+        sessionStorage.removeItem('nab_access_token');
       }
       if (mounted) setLoading(false);
     });
@@ -230,13 +291,13 @@ export function AuthProvider({ children }) {
     
     const userObj = { id: res.user.id, email: res.user.email, role: 'customer', profileCompleted: !!res.profile };
     setUser(userObj);
-    localStorage.setItem('nab_session_user', JSON.stringify(userObj));
+    sessionStorage.setItem('nab_session_user', JSON.stringify(userObj));
     if (res.profile) {
       setProfile(res.profile);
-      localStorage.setItem('nab_session_profile', JSON.stringify(res.profile));
+      sessionStorage.setItem('nab_session_profile', JSON.stringify(res.profile));
     } else {
       setProfile(null);
-      localStorage.removeItem('nab_session_profile');
+      sessionStorage.removeItem('nab_session_profile');
     }
     return res;
   };
@@ -264,7 +325,7 @@ export function AuthProvider({ children }) {
   };
 
   const setToken = (token) => {
-    localStorage.setItem('nab_access_token', token);
+    sessionStorage.setItem('nab_access_token', token);
   };
 
   const resetPasswordRequest = async (email) => {
@@ -297,37 +358,59 @@ export function AuthProvider({ children }) {
     supabase.auth.signOut();
     // Scope cart keys on logout
     if (user) {
+      sessionStorage.removeItem(`nab_cart_${user.id}`);
       localStorage.removeItem(`nab_cart_${user.id}`);
     }
     setUser(null);
     setProfile(null);
+    sessionStorage.removeItem('nab_session_user');
+    sessionStorage.removeItem('nab_session_profile');
+    sessionStorage.removeItem('nab_access_token');
   };
 
   const adminLogin = async (username, password) => {
     const res = await api.adminLogin(username, password);
     setAdmin(res.admin);
+    sessionStorage.setItem('nab_session_admin', JSON.stringify(res.admin));
+    setUser(null);
+    setProfile(null);
+    setStaff(null);
+    sessionStorage.removeItem('nab_session_user');
+    sessionStorage.removeItem('nab_session_profile');
+    sessionStorage.removeItem('nab_session_staff');
     return res;
   };
 
   const adminLogout = () => {
     supabase.auth.signOut();
     setAdmin(null);
+    sessionStorage.removeItem('nab_session_admin');
+    sessionStorage.removeItem('nab_access_token');
   };
 
   const staffLogin = async (username, password) => {
     const res = await api.staffLogin(username, password);
     setStaff(res.agent);
+    sessionStorage.setItem('nab_session_staff', JSON.stringify(res.agent));
+    setUser(null);
+    setProfile(null);
+    setAdmin(null);
+    sessionStorage.removeItem('nab_session_user');
+    sessionStorage.removeItem('nab_session_profile');
+    sessionStorage.removeItem('nab_session_admin');
     return res;
   };
 
   const staffLogout = () => {
     supabase.auth.signOut();
     setStaff(null);
+    sessionStorage.removeItem('nab_session_staff');
+    sessionStorage.removeItem('nab_access_token');
   };
 
   const updateStaffProfileState = (updatedProfile) => {
     setStaff(updatedProfile);
-    localStorage.setItem('nab_session_staff', JSON.stringify(updatedProfile));
+    sessionStorage.setItem('nab_session_staff', JSON.stringify(updatedProfile));
   };
 
   return (

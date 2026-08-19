@@ -67,9 +67,9 @@ export const Product = {
 
 export const Order = {
   list: async (orderBy = '-created_date', limit = 50) => {
-    const userSession = JSON.parse(localStorage.getItem('nab_session_user') || 'null');
-    const adminSession = JSON.parse(localStorage.getItem('nab_session_admin') || 'null');
-    const staffSession = JSON.parse(localStorage.getItem('nab_session_staff') || 'null');
+    const userSession = JSON.parse(sessionStorage.getItem('nab_session_user') || localStorage.getItem('nab_session_user') || 'null');
+    const adminSession = JSON.parse(sessionStorage.getItem('nab_session_admin') || localStorage.getItem('nab_session_admin') || 'null');
+    const staffSession = JSON.parse(sessionStorage.getItem('nab_session_staff') || localStorage.getItem('nab_session_staff') || 'null');
     
     let list = [];
     if (adminSession || staffSession) {
@@ -109,7 +109,7 @@ export const Order = {
     }));
   },
   create: async (data) => {
-    const userSession = JSON.parse(localStorage.getItem('nab_session_user') || 'null');
+    const userSession = JSON.parse(sessionStorage.getItem('nab_session_user') || localStorage.getItem('nab_session_user') || 'null');
     const userId = userSession ? userSession.id : 'anonymous';
     
     const shippingDetails = {
@@ -269,7 +269,7 @@ export const Category = {
 export const base44 = {
   auth: {
     updateMe: async (data) => {
-      const userSession = JSON.parse(localStorage.getItem('nab_session_user') || 'null');
+      const userSession = JSON.parse(sessionStorage.getItem('nab_session_user') || localStorage.getItem('nab_session_user') || 'null');
       if (!userSession) throw new Error('No active user session');
       
       const payload = {
@@ -283,14 +283,14 @@ export const base44 = {
       };
       
       const res = await api.updateProfile(userSession.id, payload);
-      localStorage.setItem('nab_session_profile', JSON.stringify(res.profile));
+      sessionStorage.setItem('nab_session_profile', JSON.stringify(res.profile));
       return res.profile;
     }
   }
 };
 
 export const updateMe = async (data) => {
-  const userSession = JSON.parse(localStorage.getItem('nab_session_user') || 'null');
+  const userSession = JSON.parse(sessionStorage.getItem('nab_session_user') || localStorage.getItem('nab_session_user') || 'null');
   if (!userSession) throw new Error('No active user session');
   
   const payload = {
@@ -306,8 +306,8 @@ export const updateMe = async (data) => {
   const res = await api.updateProfile(userSession.id, payload);
   
   const updatedUser = { ...userSession, profileCompleted: true };
-  localStorage.setItem('nab_session_user', JSON.stringify(updatedUser));
-  localStorage.setItem('nab_session_profile', JSON.stringify(res.profile));
+  sessionStorage.setItem('nab_session_user', JSON.stringify(updatedUser));
+  sessionStorage.setItem('nab_session_profile', JSON.stringify(res.profile));
   
   const users = JSON.parse(localStorage.getItem('nab_users') || '[]');
   const updatedUsers = users.map(u => u.id === userSession.id ? { ...u, profileCompleted: true } : u);

@@ -3,7 +3,12 @@ import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function ProtectedRoute() {
-  const { user, admin, staff } = useAuth();
+  const { user, admin, staff, loading } = useAuth();
+
+  // Wait for initial session restoration
+  if (loading) {
+    return <div className="min-h-screen bg-background flex items-center justify-center text-muted text-sm">Loading...</div>;
+  }
 
   // If active administrator session tries to access customer route -> redirect to /admin
   if (admin) {
