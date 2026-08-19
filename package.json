@@ -1,0 +1,14 @@
+{
+  "name": "nab-connect-workspace",
+  "version": "1.0.0",
+  "description": "Workspace root for NAB Connect frontend and backend",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "lint": "npm run lint --prefix frontend",
+    "preview": "npm run preview --prefix frontend",
+    "backend:dev": "npm run dev --prefix backend",
+    "backend:install": "npm install --prefix backend"
+  }
+}
