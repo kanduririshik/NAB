@@ -323,11 +323,11 @@ export default function Landing() {
                 className="absolute right-[-210px] xl:right-[-290px] lg:right-[-240px] top-[-10px] hidden lg:flex items-center gap-2.5 bg-white/75 backdrop-blur-md border border-sky-100 rounded-2xl p-3 shadow-md shadow-sky-500/5 select-none transition-colors duration-300 pointer-events-auto cursor-pointer"
               >
                 <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 flex-shrink-0">
-                  <Truck size={16} />
+                  <Shield size={16} />
                 </div>
                 <div className="text-left">
-                  <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-widest block leading-none">Logistics</span>
-                  <span className="text-xs font-bold text-slate-800 leading-tight">Live Dispatch GPS</span>
+                  <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-widest block leading-none">Custody</span>
+                  <span className="text-xs font-bold text-slate-800 leading-tight">Secure Chain of Custody</span>
                 </div>
               </motion.div>
 
