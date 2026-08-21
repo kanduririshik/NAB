@@ -1,16 +1,100 @@
-# React + Vite
+# NAB Connect
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+### Smart Hospital Delivery & Logistics Management Platform
 
-Currently, two official plugins are available:
+NAB Connect is a full-stack hospital delivery and logistics management platform designed to manage products, orders, customers, delivery staff, dispatch operations, and live GPS tracking from a centralized system.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 🚀 Live Application
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+**Production:**  
+https://nab-connect.vercel.app
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## ✨ Features
+
+### 👤 Customer Portal
+
+- Customer registration and login
+- Google OAuth authentication
+- Browse available products
+- Product details
+- Shopping cart
+- Order placement
+- Order history
+- Order status tracking
+- Customer profile management
+
+### 🛠️ Admin Portal
+
+- Secure admin authentication
+- Admin dashboard
+- Product CRUD operations
+- Order management
+- Customer management
+- Delivery agent management
+- Assign delivery orders
+- Delivery tracking
+- Fleet monitoring
+- Customer communication/inbox
+- Live delivery telemetry
+
+### 🚚 Delivery Staff Portal
+
+- Staff authentication
+- View assigned deliveries
+- Accept assigned orders
+- Update delivery status
+- Start/stop GPS tracking
+- Live GPS telemetry
+- Delivery history
+- Staff profile management
+
+### 📍 Live GPS Tracking
+
+- Real-time delivery staff location
+- Live latitude and longitude
+- GPS accuracy
+- Speed monitoring
+- Delivery status
+- Moving / Idle / Stale / Offline states
+- Fleet overview
+- Individual delivery-agent tracking
+- Automatic map framing
+- Realtime synchronization between staff and admin
+
+### 🗺️ Maps
+
+NAB Connect supports map-based delivery tracking.
+
+- OpenStreetMap / Leaflet
+- Google Maps support
+- Automatic fallback when Google Maps is unavailable
+- Interactive delivery markers
+- Agent information popups
+- Fleet location visualization
+
+### 🔐 Authentication & Security
+
+- Supabase Authentication
+- Email/password authentication
+- Google OAuth
+- Role-based access
+- Customer routes
+- Admin routes
+- Staff routes
+- Protected application pages
+- Per-tab authentication/session isolation
+
+### 🔄 Multi-Tab Authentication
+
+Customer, Admin, and Staff portals can operate independently in separate browser tabs.
+
+Example:
+
+```text
+Tab 1 → Customer
+Tab 2 → Admin
+Tab 3 → Delivery Staff
