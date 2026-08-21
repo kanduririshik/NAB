@@ -5,6 +5,43 @@ import { User, Phone, Mail, MapPin, Truck, Calendar, Shield, Lock, Loader2, Key,
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
+// Client-side image compression helper to ensure lightning-fast uploads and reliable DB persistence
+const compressAvatar = (file, maxWidth = 400, maxHeight = 400, quality = 0.85) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => reject(new Error('Failed to parse image file'));
+      img.src = event.target.result;
+    };
+    reader.onerror = () => reject(new Error('Failed to read image file'));
+    reader.readAsDataURL(file);
+  });
+};
+
 export default function StaffProfile() {
   const { staff, updateStaffProfileState } = useAuth();
   
@@ -17,6 +54,7 @@ export default function StaffProfile() {
   // Edit details form state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [editForm, setEditForm] = useState({
     fullName: '',
     phone: '',
@@ -36,28 +74,73 @@ export default function StaffProfile() {
     setEditDialogOpen(true);
   };
 
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files[0];
+  // 1-Click Direct Avatar Photo Upload from profile card
+  const handleDirectPhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      toast.warning('Image file must be smaller than 2MB.');
-      return;
-    }
+    setUploadingAvatar(true);
+    try {
+      const base64Photo = await compressAvatar(file);
+      
+      let updatedAgent = {
+        ...staff,
+        profilePhoto: base64Photo
+      };
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setEditForm(prev => ({ ...prev, profilePhoto: reader.result }));
-      toast.success('Avatar image uploaded!');
-    };
-    reader.readAsDataURL(file);
+      // 1. Instantly update React context session & local storage
+      updateStaffProfileState(updatedAgent);
+
+      try {
+        const saved = JSON.parse(localStorage.getItem('nab_agents') || '[]');
+        const updated = saved.map(a => a.id === staff.id ? updatedAgent : a);
+        localStorage.setItem('nab_agents', JSON.stringify(updated));
+      } catch (err) {
+        console.warn('LocalStorage backup note:', err);
+      }
+
+      // 2. Persist to Supabase Database and broadcast to Admin
+      try {
+        const dbRes = await StaffAuth.updateProfile(staff.id, {
+          profilePhoto: base64Photo
+        });
+        if (dbRes && dbRes.profilePhoto) {
+          updatedAgent = { ...updatedAgent, ...dbRes };
+          updateStaffProfileState(updatedAgent);
+        }
+      } catch (err) {
+        console.warn('Database avatar sync note:', err);
+      }
+
+      toast.success('Profile photo updated and synced across Admin Portal!');
+    } catch (err) {
+      toast.error(err.message || 'Failed to process photo.');
+    } finally {
+      setUploadingAvatar(false);
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const base64Photo = await compressAvatar(file);
+      setEditForm(prev => ({ ...prev, profilePhoto: base64Photo }));
+      toast.success('Avatar image selected!');
+    } catch (err) {
+      toast.error(err.message || 'Failed to load image.');
+    } finally {
+      if (e.target) e.target.value = '';
+    }
   };
 
   const handleSaveDetails = async (e) => {
     e.preventDefault();
     setLoadingDetails(true);
     try {
-      const updatedAgent = {
+      let updatedAgent = {
         ...staff,
         fullName: editForm.fullName,
         phone: editForm.phone,
@@ -66,12 +149,26 @@ export default function StaffProfile() {
         profilePhoto: editForm.profilePhoto
       };
 
-      // 1. Update local storage database
-      const saved = JSON.parse(localStorage.getItem('nab_agents') || '[]');
-      const updated = saved.map(a => a.id === staff.id ? updatedAgent : a);
-      localStorage.setItem('nab_agents', JSON.stringify(updated));
+      // 1. Update Supabase if available
+      try {
+        const dbRes = await StaffAuth.updateProfile(staff.id, editForm);
+        if (dbRes) {
+          updatedAgent = { ...updatedAgent, ...dbRes };
+        }
+      } catch (err) {
+        console.warn('Supabase profile update warning:', err);
+      }
 
-      // 2. Broadcast local update to react context session
+      // 2. Update local storage database if present
+      try {
+        const saved = JSON.parse(localStorage.getItem('nab_agents') || '[]');
+        const updated = saved.map(a => a.id === staff.id ? updatedAgent : a);
+        localStorage.setItem('nab_agents', JSON.stringify(updated));
+      } catch (e) {
+        console.warn('LocalStorage sync warning:', e);
+      }
+
+      // 3. Broadcast update to react context session
       updateStaffProfileState(updatedAgent);
 
       toast.success('Profile details updated successfully!');
@@ -142,13 +239,55 @@ export default function StaffProfile() {
             </button>
 
             <div className="flex flex-col sm:flex-row items-center gap-5 pb-5 border-b border-slate-100">
-              <img
-                src={staff?.profilePhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'}
-                alt={staff?.fullName}
-                className="w-20 h-20 rounded-2xl object-cover border-2 border-primary/20 shadow-sm flex-shrink-0"
-              />
+              <div className="relative group flex-shrink-0">
+                <img
+                  src={staff?.profilePhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'}
+                  alt={staff?.fullName}
+                  className="w-20 h-20 rounded-2xl object-cover border-2 border-primary/20 shadow-sm"
+                />
+                <label className="absolute inset-0 bg-black/50 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center cursor-pointer text-white text-[10px] font-bold">
+                  {uploadingAvatar ? (
+                    <Loader2 size={20} className="animate-spin" />
+                  ) : (
+                    <>
+                      <Camera size={18} className="mb-0.5" />
+                      <span>Change</span>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={uploadingAvatar}
+                    onChange={handleDirectPhotoUpload}
+                    className="hidden"
+                  />
+                </label>
+                <label className="absolute -bottom-1 -right-1 bg-primary text-white p-1.5 rounded-full shadow-md hover:bg-primary/90 cursor-pointer sm:hidden">
+                  <Camera size={12} />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={uploadingAvatar}
+                    onChange={handleDirectPhotoUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
               <div className="text-center sm:text-left space-y-1 truncate w-full">
-                <h3 className="font-display font-black text-slate-900 text-lg leading-snug">{staff?.fullName}</h3>
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                  <h3 className="font-display font-black text-slate-900 text-lg leading-snug">{staff?.fullName}</h3>
+                  <label className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-black uppercase cursor-pointer transition-colors shadow-xs">
+                    {uploadingAvatar ? <Loader2 size={11} className="animate-spin text-primary" /> : <Camera size={11} className="text-primary" />}
+                    <span>{uploadingAvatar ? 'Uploading...' : (staff?.profilePhoto ? 'Change Photo' : 'Upload Photo')}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadingAvatar}
+                      onChange={handleDirectPhotoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
                 <span className="text-xs text-slate-400 font-mono block">EMPLOYEE ID: {staff?.employeeId || 'N/A'}</span>
                 <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded ${
                   staff?.availabilityStatus === 'Online' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-500'

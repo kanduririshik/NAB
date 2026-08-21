@@ -39,12 +39,30 @@ export default function AdminLayout() {
       queryClient.invalidateQueries({ queryKey: ['adminAgents'] });
     });
 
+    // BroadcastChannel for instant cross-tab sync
+    let bc;
+    try {
+      if (typeof window !== 'undefined' && window.BroadcastChannel) {
+        bc = new BroadcastChannel('nab_agents_telemetry');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'AGENT_UPDATE') {
+            queryClient.invalidateQueries({ queryKey: ['adminAgents'] });
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel error in AdminLayout:', e);
+    }
+
     return () => {
-      unsubContacts();
-      unsubLocations();
-      unsubAssignments();
-      unsubOrders();
-      unsubAgents();
+      if (typeof unsubContacts === 'function') unsubContacts();
+      if (typeof unsubLocations === 'function') unsubLocations();
+      if (typeof unsubAssignments === 'function') unsubAssignments();
+      if (typeof unsubOrders === 'function') unsubOrders();
+      if (typeof unsubAgents === 'function') unsubAgents();
+      if (bc) {
+        bc.close();
+      }
     };
   }, [queryClient]);
 

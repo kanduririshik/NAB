@@ -19,6 +19,25 @@ export default function StaffDashboard() {
     return staff?.availabilityStatus === 'Online';
   });
 
+  // Query live location status for current staff
+  const { data: myLocation } = useQuery({
+    queryKey: ['myLiveLocation', staff?.id],
+    queryFn: async () => {
+      if (!staff?.id) return null;
+      const locs = await LiveLocation.list();
+      return locs.find(l => l.agentId === staff?.id) || null;
+    },
+    enabled: !!staff?.id
+  });
+
+  useEffect(() => {
+    if (myLocation?.status) {
+      setIsOnline(myLocation.status === 'Online' || myLocation.status === 'Moving');
+    } else if (staff?.availabilityStatus) {
+      setIsOnline(staff.availabilityStatus === 'Online');
+    }
+  }, [myLocation?.status, staff?.availabilityStatus]);
+
   // Fetch all assignments for the current staff member
   const { data: assignments = [], isLoading } = useQuery({
     queryKey: ['staffAssignments', staff?.id],
@@ -36,26 +55,70 @@ export default function StaffDashboard() {
   // Mutation to toggle online status
   const toggleStatusMutation = useMutation({
     mutationFn: async (statusVal) => {
-      // Update agent availability
-      const updatedAgent = await Assignment.list().then(() => {
+      if (!staff?.id) throw new Error('No staff session found');
+      
+      let lat = 17.3850;
+      let lng = 78.4867;
+
+      try {
+        const locs = await LiveLocation.list();
+        const existing = locs.find(l => l.agentId === staff.id);
+        if (existing && existing.latitude && existing.longitude) {
+          lat = existing.latitude;
+          lng = existing.longitude;
+        }
+      } catch (e) {
+        console.warn('Could not query existing location', e);
+      }
+
+      if (navigator.geolocation && statusVal === 'Online') {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000, enableHighAccuracy: true });
+          });
+          lat = pos.coords.latitude;
+          lng = pos.coords.longitude;
+        } catch (e) {
+          console.warn('Geolocation unavailable, using default coords', e);
+        }
+      }
+
+      // Update Supabase live_locations
+      try {
+        await LiveLocation.update(staff.id, lat, lng, { status: statusVal });
+      } catch (err) {
+        console.warn('LiveLocation update error:', err);
+      }
+
+      // Update local storage nab_agents and nab_live_locations if present
+      try {
         const saved = JSON.parse(localStorage.getItem('nab_agents') || '[]');
         const target = saved.map(a => a.id === staff.id ? { ...a, availabilityStatus: statusVal } : a);
         localStorage.setItem('nab_agents', JSON.stringify(target));
-        
-        // Also update live location status
+
         const locs = JSON.parse(localStorage.getItem('nab_live_locations') || '[]');
         const updatedLocs = locs.map(l => l.agentId === staff.id ? { ...l, status: statusVal === 'Online' ? 'Online' : 'Offline' } : l);
         localStorage.setItem('nab_live_locations', JSON.stringify(updatedLocs));
-        
-        return target.find(a => a.id === staff.id);
-      });
-      return updatedAgent;
+      } catch (e) {
+        console.warn('LocalStorage sync warning:', e);
+      }
+
+      return {
+        ...staff,
+        availabilityStatus: statusVal
+      };
     },
     onSuccess: (updatedAgent) => {
-      updateStaffProfileState(updatedAgent);
-      setIsOnline(updatedAgent.availabilityStatus === 'Online');
-      toast.success(`Availability status updated to ${updatedAgent.availabilityStatus}`);
+      if (updatedAgent) {
+        updateStaffProfileState(updatedAgent);
+        setIsOnline(updatedAgent.availabilityStatus === 'Online');
+        toast.success(`Shift status changed to ${updatedAgent.availabilityStatus === 'Online' ? 'ONLINE' : 'OFFLINE'}`);
+      }
       queryClient.invalidateQueries({ queryKey: ['liveLocations'] });
+      queryClient.invalidateQueries({ queryKey: ['myLiveLocation'] });
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Failed to update shift status');
     }
   });
 

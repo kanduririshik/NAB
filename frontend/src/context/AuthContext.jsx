@@ -409,8 +409,12 @@ export function AuthProvider({ children }) {
   };
 
   const updateStaffProfileState = (updatedProfile) => {
-    setStaff(updatedProfile);
-    sessionStorage.setItem('nab_session_staff', JSON.stringify(updatedProfile));
+    if (!updatedProfile) return;
+    setStaff(prev => {
+      const merged = { ...(prev || {}), ...updatedProfile };
+      sessionStorage.setItem('nab_session_staff', JSON.stringify(merged));
+      return merged;
+    });
   };
 
   return (

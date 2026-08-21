@@ -1097,26 +1097,31 @@ export const api = {
   },
 
   async updateStaffProfile(agentId, profileData) {
-    const photoUrl = await uploadBase64Image(profileData.profilePhoto, 'delivery-proofs');
+    let photoUrl = profileData.profilePhoto;
+    if (photoUrl && photoUrl.startsWith('data:')) {
+      photoUrl = await uploadBase64Image(profileData.profilePhoto, 'delivery-proofs');
+    }
+
+    const updateFields = {
+      updated_at: new Date().toISOString()
+    };
+    if (profileData.fullName !== undefined) updateFields.full_name = profileData.fullName;
+    if (profileData.phone !== undefined) updateFields.phone = profileData.phone;
+    if (profileData.address !== undefined) updateFields.address = profileData.address;
+    if (profileData.vehicleType !== undefined) updateFields.vehicle_type = profileData.vehicleType;
+    if (profileData.vehicleNumber !== undefined) updateFields.vehicle_number = profileData.vehicleNumber;
+    if (photoUrl !== undefined) updateFields.profile_photo = photoUrl;
 
     const { data, error } = await supabase
       .from('delivery_agents')
-      .update({
-        full_name: profileData.fullName,
-        phone: profileData.phone,
-        address: profileData.address,
-        vehicle_type: profileData.vehicleType,
-        vehicle_number: profileData.vehicleNumber,
-        profile_photo: photoUrl,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateFields)
       .eq('id', agentId)
       .select()
       .single();
       
     if (error) throw error;
-    
-    return {
+
+    const result = {
       id: data.id,
       fullName: data.full_name,
       username: data.username,
@@ -1130,6 +1135,22 @@ export const api = {
       joiningDate: data.joining_date,
       status: data.status
     };
+
+    // Instant cross-tab broadcast via BroadcastChannel
+    try {
+      if (typeof window !== 'undefined' && window.BroadcastChannel) {
+        const bc = new BroadcastChannel('nab_agents_telemetry');
+        bc.postMessage({ type: 'AGENT_UPDATE', payload: result });
+        bc.close();
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel error:', e);
+    }
+
+    // Trigger local and Supabase event hub listeners
+    this.notify('agents_update', result);
+
+    return result;
   },
 
   async changeStaffPassword(agentId, currentPassword, newPassword) {
