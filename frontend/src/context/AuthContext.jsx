@@ -72,11 +72,21 @@ export function AuthProvider({ children }) {
       sessionStorage.removeItem('nab_session_staff');
     } else if (role === 'delivery_boy' || role === 'staff') {
       // Load agent details
-      const { data: agent } = await supabase
+      let { data: agent } = await supabase
         .from('delivery_agents')
         .select('*')
         .eq('id', sessionUser.id)
         .maybeSingle();
+        
+      if (!agent) {
+        const usernamePrefix = (sessionUser.email?.split('@')[0] || '').toLowerCase();
+        const { data: fallbackAgent } = await supabase
+          .from('delivery_agents')
+          .select('*')
+          .or(`username.ilike.${usernamePrefix},email.ilike.${sessionUser.email}`)
+          .maybeSingle();
+        agent = fallbackAgent;
+      }
         
       const staffObj = agent ? {
         id: agent.id,

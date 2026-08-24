@@ -59,9 +59,9 @@ export default function StaffLogin() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Username */}
+            {/* Username or Email */}
             <div className="text-left">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Username</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Username or Email</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
                   <User size={16} />
@@ -74,7 +74,7 @@ export default function StaffLogin() {
                   autoComplete="off"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter staff username"
+                  placeholder="Enter staff username or email"
                   className="block w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-xl focus:bg-slate-900 focus:ring-2 focus:ring-sky-400/20 focus:border-sky-400 outline-none text-xs text-white placeholder-slate-600 transition-all"
                 />
               </div>

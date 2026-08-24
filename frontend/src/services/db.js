@@ -719,12 +719,14 @@ export const api = {
   },
 
   async addAgent(agentData) {
-    // 1. Create auth user securely
-    const agentEmail = agentData.email || `${agentData.username}@nab.in`;
+    // 1. Create auth user securely using internal @nab.in email to prevent conflicts with personal emails
+    const rawUsername = (agentData.username || agentData.fullName || 'staff').trim().toLowerCase().replace(/\s+/g, '');
+    const internalAuthEmail = `${rawUsername}@nab.in`;
+    const contactEmail = agentData.email ? agentData.email.trim().toLowerCase() : internalAuthEmail;
     const agentPassword = agentData.password || 'password123';
     
     const { data: userId, error: rpcErr } = await supabase.rpc('create_auth_user', {
-      p_email: agentEmail,
+      p_email: internalAuthEmail,
       p_password: agentPassword,
       p_role: 'delivery_boy'
     });
@@ -734,15 +736,15 @@ export const api = {
     // 2. Upload profile photo if applicable
     const photoUrl = await uploadBase64Image(agentData.profilePhoto, 'delivery-proofs');
 
-    // 3. Create profile details
+    // 3. Create profile details using upsert
     const { data, error } = await supabase
       .from('delivery_agents')
-      .insert({
+      .upsert({
         id: userId,
         full_name: agentData.fullName,
         username: agentData.username,
         phone: agentData.phone,
-        email: agentEmail,
+        email: contactEmail,
         address: agentData.address,
         vehicle_type: agentData.vehicleType,
         vehicle_number: agentData.vehicleNumber,
@@ -1049,33 +1051,73 @@ export const api = {
   },
 
   // --- STAFF AUTH ---
-  async staffLogin(username, password) {
-    const email = username.includes('@') ? username : `${username}@nab.in`;
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  async staffLogin(usernameOrEmail, password) {
+    const input = (usernameOrEmail || '').trim();
+    let authEmail = input.toLowerCase();
+
+    if (!authEmail.includes('@')) {
+      authEmail = `${authEmail}@nab.in`;
+    } else if (!authEmail.endsWith('@nab.in')) {
+      // Check if this personal contact email belongs to a delivery agent
+      const { data: agentByEmail } = await supabase
+        .from('delivery_agents')
+        .select('username, id')
+        .ilike('email', authEmail)
+        .maybeSingle();
+
+      if (agentByEmail?.username) {
+        authEmail = `${agentByEmail.username.trim().toLowerCase()}@nab.in`;
+      }
+    }
+
+    let { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password });
+    
+    // If authEmail failed and the input was an external email, try signing in directly with raw email
+    if (error && input.includes('@') && authEmail !== input.toLowerCase()) {
+      const retry = await supabase.auth.signInWithPassword({ email: input, password });
+      if (!retry.error) {
+        data = retry.data;
+        error = null;
+      }
+    }
+
     if (error) throw error;
 
     // Check role
-    const { data: roleData, error: roleErr } = await supabase
+    const { data: roleData } = await supabase
       .from('user_roles')
       .select('role')
       .eq('user_id', data.user.id)
-      .single();
+      .maybeSingle();
 
-    if (roleErr || roleData.role !== 'delivery_boy') {
+    const isStaffRole = roleData?.role === 'delivery_boy' || roleData?.role === 'staff' || data.user.email?.toLowerCase().endsWith('@nab.in');
+
+    if (!isStaffRole) {
       await supabase.auth.signOut();
       throw new Error('Unauthorized: Invalid staff credentials.');
     }
 
     // Load agent profile
-    const { data: agent, error: agentErr } = await supabase
+    let { data: agent } = await supabase
       .from('delivery_agents')
       .select('*')
       .eq('id', data.user.id)
-      .single();
+      .maybeSingle();
 
-    if (agentErr) {
+    if (!agent) {
+      // Fallback lookup by username or email
+      const cleanUser = (input.split('@')[0] || '').toLowerCase();
+      const { data: fallbackAgent } = await supabase
+        .from('delivery_agents')
+        .select('*')
+        .or(`username.ilike.${cleanUser},email.ilike.${input}`)
+        .maybeSingle();
+      agent = fallbackAgent;
+    }
+
+    if (!agent) {
       await supabase.auth.signOut();
-      throw new Error('Agent profile not found.');
+      throw new Error('Agent profile not found. Please contact Administrator.');
     }
 
     if (agent.status === 'Inactive') {
