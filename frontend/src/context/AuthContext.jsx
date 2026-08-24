@@ -50,9 +50,10 @@ export function AuthProvider({ children }) {
       
     let role = roleData ? roleData.role : null;
     if (!role) {
-      if (sessionUser.email === 'NAB@nab.in' || sessionStorage.getItem('nab_session_admin')) {
+      const emailLower = sessionUser.email?.toLowerCase() || '';
+      if (emailLower === 'nab@nab.in' || sessionStorage.getItem('nab_session_admin')) {
         role = 'admin';
-      } else if (sessionStorage.getItem('nab_session_staff') || (sessionUser.email?.endsWith('@nab.in') && sessionUser.email !== 'NAB@nab.in')) {
+      } else if (sessionStorage.getItem('nab_session_staff') || (emailLower.endsWith('@nab.in') && emailLower !== 'nab@nab.in')) {
         role = 'staff';
       } else {
         role = 'customer';

@@ -253,13 +253,16 @@ export const api = {
     if (error) throw error;
 
     // Check role
-    const { data: roleData, error: roleErr } = await supabase
+    const { data: roleData } = await supabase
       .from('user_roles')
       .select('role')
       .eq('user_id', data.user.id)
-      .single();
+      .maybeSingle();
 
-    if (roleErr || roleData.role !== 'admin') {
+    const isExplicitAdmin = roleData?.role === 'admin';
+    const isDefaultAdminEmail = email.toLowerCase() === 'nab@nab.in' || data.user?.email?.toLowerCase() === 'nab@nab.in';
+
+    if (!isExplicitAdmin && !isDefaultAdminEmail) {
       await supabase.auth.signOut();
       throw new Error('Unauthorized: Invalid administrator credentials.');
     }
