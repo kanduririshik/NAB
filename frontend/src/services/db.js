@@ -778,24 +778,46 @@ export const api = {
     // Upload base64 image if it changed
     const photoUrl = await uploadBase64Image(agentData.profilePhoto, 'delivery-proofs');
 
+    const updateFields = {
+      full_name: agentData.fullName,
+      phone: agentData.phone,
+      address: agentData.address,
+      vehicle_type: agentData.vehicleType,
+      vehicle_number: agentData.vehicleNumber,
+      employee_id: agentData.employeeId,
+      profile_photo: photoUrl,
+      status: agentData.status,
+      updated_at: new Date().toISOString()
+    };
+    if (agentData.email) {
+      updateFields.email = agentData.email.trim().toLowerCase();
+    }
+
     const { data, error } = await supabase
       .from('delivery_agents')
-      .update({
-        full_name: agentData.fullName,
-        phone: agentData.phone,
-        address: agentData.address,
-        vehicle_type: agentData.vehicleType,
-        vehicle_number: agentData.vehicleNumber,
-        employee_id: agentData.employeeId,
-        profile_photo: photoUrl,
-        status: agentData.status,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateFields)
       .eq('id', id)
       .select()
       .single();
       
     if (error) throw error;
+
+    // Update login password and/or auth email in auth.users if provided
+    const hasPassword = agentData.password && agentData.password.trim().length > 0;
+    const username = data.username || agentData.username || '';
+    const staffAuthEmail = username ? `${username.trim().toLowerCase()}@nab.in` : null;
+
+    if (hasPassword || staffAuthEmail) {
+      try {
+        await supabase.rpc('admin_update_auth_user', {
+          p_user_id: id,
+          p_password: hasPassword ? agentData.password.trim() : null,
+          p_email: staffAuthEmail
+        });
+      } catch (authErr) {
+        console.warn('Could not sync auth user credentials:', authErr);
+      }
+    }
     
     return {
       id: data.id,
@@ -1053,44 +1075,62 @@ export const api = {
   // --- STAFF AUTH ---
   async staffLogin(usernameOrEmail, password) {
     const input = (usernameOrEmail || '').trim();
-    let authEmail = input.toLowerCase();
+    if (!input || !password) {
+      throw new Error('Please enter username and password.');
+    }
 
-    if (!authEmail.includes('@')) {
-      authEmail = `${authEmail}@nab.in`;
-    } else if (!authEmail.endsWith('@nab.in')) {
-      // Check if this personal contact email belongs to a delivery agent
-      const { data: agentByEmail } = await supabase
-        .from('delivery_agents')
-        .select('username, id')
-        .ilike('email', authEmail)
-        .maybeSingle();
+    const cleanUser = input.includes('@') ? input.split('@')[0] : input;
 
-      if (agentByEmail?.username) {
-        authEmail = `${agentByEmail.username.trim().toLowerCase()}@nab.in`;
+    // Check if there is an agent record with this username or email
+    const { data: agentRecord } = await supabase
+      .from('delivery_agents')
+      .select('*')
+      .or(`username.ilike.${cleanUser},email.ilike.${input}`)
+      .maybeSingle();
+
+    const candidateEmails = [
+      `${cleanUser.toLowerCase()}@nab.in`,
+      input.toLowerCase()
+    ];
+    if (agentRecord?.username) {
+      candidateEmails.unshift(`${agentRecord.username.trim().toLowerCase()}@nab.in`);
+    }
+    if (agentRecord?.email) {
+      candidateEmails.push(agentRecord.email.trim().toLowerCase());
+    }
+
+    const uniqueEmails = [...new Set(candidateEmails.filter(Boolean))];
+
+    let authData = null;
+    let lastError = null;
+
+    for (const emailToTry of uniqueEmails) {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailToTry,
+        password
+      });
+
+      if (!error && data?.user) {
+        authData = data;
+        lastError = null;
+        break;
+      } else {
+        lastError = error;
       }
     }
 
-    let { data, error } = await supabase.auth.signInWithPassword({ email: authEmail, password });
-    
-    // If authEmail failed and the input was an external email, try signing in directly with raw email
-    if (error && input.includes('@') && authEmail !== input.toLowerCase()) {
-      const retry = await supabase.auth.signInWithPassword({ email: input, password });
-      if (!retry.error) {
-        data = retry.data;
-        error = null;
-      }
+    if (!authData) {
+      throw new Error(lastError?.message || 'Invalid login credentials.');
     }
-
-    if (error) throw error;
 
     // Check role
     const { data: roleData } = await supabase
       .from('user_roles')
       .select('role')
-      .eq('user_id', data.user.id)
+      .eq('user_id', authData.user.id)
       .maybeSingle();
 
-    const isStaffRole = roleData?.role === 'delivery_boy' || roleData?.role === 'staff' || data.user.email?.toLowerCase().endsWith('@nab.in');
+    const isStaffRole = roleData?.role === 'delivery_boy' || roleData?.role === 'staff' || authData.user.email?.toLowerCase().endsWith('@nab.in');
 
     if (!isStaffRole) {
       await supabase.auth.signOut();
@@ -1098,21 +1138,14 @@ export const api = {
     }
 
     // Load agent profile
-    let { data: agent } = await supabase
-      .from('delivery_agents')
-      .select('*')
-      .eq('id', data.user.id)
-      .maybeSingle();
-
+    let agent = agentRecord;
     if (!agent) {
-      // Fallback lookup by username or email
-      const cleanUser = (input.split('@')[0] || '').toLowerCase();
-      const { data: fallbackAgent } = await supabase
+      const { data: agentById } = await supabase
         .from('delivery_agents')
         .select('*')
-        .or(`username.ilike.${cleanUser},email.ilike.${input}`)
+        .eq('id', authData.user.id)
         .maybeSingle();
-      agent = fallbackAgent;
+      agent = agentById;
     }
 
     if (!agent) {
