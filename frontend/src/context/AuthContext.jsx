@@ -168,32 +168,15 @@ export function AuthProvider({ children }) {
         if (session && mounted) {
           await handleSession(session);
         } else if (mounted) {
-          if (isAdmin) {
-            const savedAdmin = sessionStorage.getItem('nab_session_admin');
-            if (savedAdmin) {
-              setAdmin(JSON.parse(savedAdmin));
-              setUser(null);
-              setProfile(null);
-              setStaff(null);
-            }
-          } else if (isStaff) {
-            const savedStaff = sessionStorage.getItem('nab_session_staff');
-            if (savedStaff) {
-              setStaff(JSON.parse(savedStaff));
-              setUser(null);
-              setProfile(null);
-              setAdmin(null);
-            }
-          } else {
-            const savedUser = sessionStorage.getItem('nab_session_user');
-            if (savedUser) {
-              setUser(JSON.parse(savedUser));
-              const savedProfile = sessionStorage.getItem('nab_session_profile');
-              if (savedProfile) setProfile(JSON.parse(savedProfile));
-              setAdmin(null);
-              setStaff(null);
-            }
-          }
+          // If Supabase session is null, clean up states and storage to prevent unauthenticated UI glitches
+          setUser(null);
+          setProfile(null);
+          setAdmin(null);
+          setStaff(null);
+          sessionStorage.removeItem('nab_session_user');
+          sessionStorage.removeItem('nab_session_profile');
+          sessionStorage.removeItem('nab_session_admin');
+          sessionStorage.removeItem('nab_session_staff');
         }
       } catch (err) {
         console.error('Session restore error:', err);

@@ -9,11 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 // Dynamic storage key scoped per portal path to prevent multi-tab auth collisions
 const getStorageKey = () => {
-  if (typeof window === 'undefined') return 'sb-portal-auth-token';
-  const path = window.location.pathname;
-  if (path.startsWith('/admin')) return 'sb-admin-auth-token';
-  if (path.startsWith('/staff')) return 'sb-staff-auth-token';
-  return 'sb-customer-auth-token';
+  return 'sb-portal-auth-token';
 };
 
 // Configure per-tab and per-portal isolated sessionStorage so multiple tabs (Customer, Admin, Staff)
