@@ -67,43 +67,55 @@ export const Product = {
 
 export const Order = {
   list: async (orderBy = '-created_date', limit = 50) => {
+    const isStaffOrAdminPath = typeof window !== 'undefined' && (
+      window.location.pathname.startsWith('/admin') || 
+      window.location.pathname.startsWith('/staff')
+    );
     const userSession = JSON.parse(sessionStorage.getItem('nab_session_user') || localStorage.getItem('nab_session_user') || 'null');
     const adminSession = JSON.parse(sessionStorage.getItem('nab_session_admin') || localStorage.getItem('nab_session_admin') || 'null');
     const staffSession = JSON.parse(sessionStorage.getItem('nab_session_staff') || localStorage.getItem('nab_session_staff') || 'null');
     
     let list = [];
-    if (adminSession || staffSession) {
+    if (isStaffOrAdminPath || adminSession || staffSession) {
       list = await api.getOrders();
     } else if (userSession) {
       list = await api.getOrders(userSession.id);
+    } else {
+      list = [];
     }
     
     if (orderBy.includes('created_date') || orderBy.includes('createdAt')) {
-      list = [...list].sort((a, b) => new Date(b.createdAt || '') - new Date(a.createdAt || ''));
+      list = [...list].sort((a, b) => new Date(b.createdAt || b.created_at || '') - new Date(a.createdAt || a.created_at || ''));
     }
     if (limit) {
       list = list.slice(0, limit);
     }
     
-    const products = await api.getProducts();
+    let products = [];
+    try {
+      products = await api.getProducts();
+    } catch (e) {
+      console.warn('Could not fetch active products catalog fallback for orders:', e);
+    }
     
     return list.map(o => ({
       id: o.id,
-      customer_name: o.customerName,
-      customer_email: o.email,
-      customer_phone: o.phone,
-      delivery_address: o.deliveryAddress,
-      status: o.status,
-      total_amount: o.totalAmount,
-      createdAt: o.createdAt,
-      items: o.items.map(item => {
-        const dbProd = products.find(p => p.id === item.productId);
+      customer_name: o.customerName || o.customer_name || 'Customer',
+      customer_email: o.email || o.customer_email || '',
+      customer_phone: o.phone || o.customer_phone || '',
+      delivery_address: o.deliveryAddress || o.delivery_address || '',
+      status: o.status || 'Pending',
+      total_amount: Number(o.totalAmount || o.total_amount) || 0,
+      createdAt: o.createdAt || o.created_at || new Date().toISOString(),
+      items: (o.items || []).map(item => {
+        const prodId = item.productId || item.product_id;
+        const dbProd = (products || []).find(p => p.id === prodId);
         return {
-          product_id: item.productId,
-          product_name: item.productName,
-          product_image: dbProd?.image || item.productImage || 'https://images.unsplash.com/photo-1584036561566-baf241830990?auto=format&fit=crop&q=80&w=400',
-          quantity: item.quantity,
-          price: item.price
+          product_id: prodId,
+          product_name: item.productName || item.product_name || dbProd?.name || 'Product',
+          product_image: dbProd?.image || item.productImage || item.product_image || 'https://images.unsplash.com/photo-1584036561566-baf241830990?auto=format&fit=crop&q=80&w=400',
+          quantity: Number(item.quantity) || 1,
+          price: Number(item.price) || 0
         };
       })
     }));
@@ -119,43 +131,50 @@ export const Order = {
       deliveryAddress: data.delivery_address
     };
     
-    const cartItems = data.items.map(item => ({
+    const cartItems = (data.items || []).map(item => ({
       product: {
-        id: item.product_id,
-        name: item.product_name,
-        price: item.price,
-        image: item.product_image
+        id: item.product_id || item.productId,
+        name: item.product_name || item.productName,
+        price: Number(item.price) || 0,
+        image: item.product_image || item.productImage
       },
-      quantity: item.quantity
+      quantity: Number(item.quantity) || 1
     }));
     
     const newOrder = await api.submitOrder(userId, shippingDetails, cartItems);
-    const products = await api.getProducts();
+    let products = [];
+    try {
+      products = await api.getProducts();
+    } catch (e) {}
 
     return {
       id: newOrder.id,
-      customer_name: newOrder.customerName,
-      customer_email: newOrder.email,
-      customer_phone: newOrder.phone,
-      delivery_address: newOrder.deliveryAddress,
-      status: newOrder.status,
-      total_amount: newOrder.totalAmount,
-      createdAt: newOrder.createdAt,
-      items: newOrder.items.map(item => {
-        const dbProd = products.find(p => p.id === item.productId);
+      customer_name: newOrder.customerName || data.customer_name,
+      customer_email: newOrder.email || data.customer_email,
+      customer_phone: newOrder.phone || data.customer_phone,
+      delivery_address: newOrder.deliveryAddress || data.delivery_address,
+      status: newOrder.status || 'Pending',
+      total_amount: Number(newOrder.totalAmount) || 0,
+      createdAt: newOrder.createdAt || new Date().toISOString(),
+      items: (newOrder.items || []).map(item => {
+        const prodId = item.productId || item.product_id;
+        const dbProd = products.find(p => p.id === prodId);
         return {
-          product_id: item.productId,
-          product_name: item.productName,
-          product_image: dbProd?.image || item.productImage || 'https://images.unsplash.com/photo-1584036561566-baf241830990?auto=format&fit=crop&q=80&w=400',
-          quantity: item.quantity,
-          price: item.price
+          product_id: prodId,
+          product_name: item.productName || item.product_name || dbProd?.name || 'Product',
+          product_image: dbProd?.image || item.productImage || item.product_image || 'https://images.unsplash.com/photo-1584036561566-baf241830990?auto=format&fit=crop&q=80&w=400',
+          quantity: Number(item.quantity) || 1,
+          price: Number(item.price) || 0
         };
       })
     };
   },
   update: async (id, data) => {
     const updated = await api.updateOrderStatus(id, data.status);
-    const products = await api.getProducts();
+    let products = [];
+    try {
+      products = await api.getProducts();
+    } catch (e) {}
 
     return {
       id: updated.id,
@@ -164,16 +183,17 @@ export const Order = {
       customer_phone: updated.phone,
       delivery_address: updated.deliveryAddress,
       status: updated.status,
-      total_amount: updated.totalAmount,
+      total_amount: Number(updated.totalAmount) || 0,
       createdAt: updated.createdAt,
-      items: updated.items.map(item => {
-        const dbProd = products.find(p => p.id === item.productId);
+      items: (updated.items || []).map(item => {
+        const prodId = item.productId || item.product_id;
+        const dbProd = products.find(p => p.id === prodId);
         return {
-          product_id: item.productId,
-          product_name: item.productName,
-          product_image: dbProd?.image || item.productImage || 'https://images.unsplash.com/photo-1584036561566-baf241830990?auto=format&fit=crop&q=80&w=400',
-          quantity: item.quantity,
-          price: item.price
+          product_id: prodId,
+          product_name: item.productName || item.product_name || dbProd?.name || 'Product',
+          product_image: dbProd?.image || item.productImage || item.product_image || 'https://images.unsplash.com/photo-1584036561566-baf241830990?auto=format&fit=crop&q=80&w=400',
+          quantity: Number(item.quantity) || 1,
+          price: Number(item.price) || 0
         };
       })
     };

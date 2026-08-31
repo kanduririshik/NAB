@@ -128,8 +128,10 @@ export default function Orders() {
 
                 {/* Items list */}
                 <div className="space-y-3">
-                  {o.items.map((item, idx) => {
-                    const lineTotal = item.price * item.quantity;
+                  {(o.items || []).map((item, idx) => {
+                    const itemPrice = Number(item.price) || 0;
+                    const itemQty = Number(item.quantity) || 1;
+                    const lineTotal = itemPrice * itemQty;
                     return (
                       <div key={idx} className="flex items-center justify-between gap-3 text-xs">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -139,12 +141,12 @@ export default function Orders() {
                             className="w-10 h-10 rounded-md object-cover bg-slate-100 flex-shrink-0"
                           />
                           <span className="font-semibold text-foreground truncate">
-                            {item.product_name}
+                            {item.product_name || 'Product'}
                           </span>
                         </div>
                         <div className="flex items-center gap-4 text-right flex-shrink-0">
                           <span className="text-muted text-[11px] font-medium whitespace-nowrap">
-                            {item.quantity} × ₹{item.price.toLocaleString('en-IN')}
+                            {itemQty} × ₹{itemPrice.toLocaleString('en-IN')}
                           </span>
                           <span className="font-bold text-foreground w-16 font-display whitespace-nowrap">
                             ₹{lineTotal.toLocaleString('en-IN')}
@@ -159,7 +161,7 @@ export default function Orders() {
                 <div className="border-t border-border pt-3 flex justify-between items-center text-xs">
                   <span className="text-muted font-bold uppercase tracking-wider text-[10px]">Estimated Total</span>
                   <span className="text-base font-black text-foreground font-display">
-                    ₹{o.total_amount.toLocaleString('en-IN')}
+                    ₹{(Number(o.total_amount) || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
               </motion.div>

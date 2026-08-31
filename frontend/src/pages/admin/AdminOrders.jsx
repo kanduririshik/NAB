@@ -235,8 +235,10 @@ export default function AdminOrders() {
                   {/* Items List */}
                   <div className="space-y-3 pt-1">
                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Requested Items</span>
-                    {o.items.map((item, idx) => {
-                      const lineTotal = item.price * item.quantity;
+                    {(o.items || []).map((item, idx) => {
+                      const itemPrice = Number(item.price) || 0;
+                      const itemQty = Number(item.quantity) || 1;
+                      const lineTotal = itemPrice * itemQty;
                       return (
                         <div key={idx} className="flex items-center justify-between text-xs gap-3">
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -246,12 +248,12 @@ export default function AdminOrders() {
                               className="w-8 h-8 rounded-md object-cover bg-slate-100 flex-shrink-0 border border-border"
                             />
                             <span className="font-semibold text-slate-800 truncate pr-2">
-                              {item.product_name}
+                              {item.product_name || 'Product'}
                             </span>
                           </div>
                           <div className="flex items-center gap-4 text-right flex-shrink-0">
                             <span className="text-[10px] text-slate-400">
-                              {item.quantity} × ₹{item.price.toLocaleString('en-IN')}
+                              {itemQty} × ₹{itemPrice.toLocaleString('en-IN')}
                             </span>
                             <span className="font-bold text-slate-950 font-display w-16">
                               ₹{lineTotal.toLocaleString('en-IN')}
@@ -321,7 +323,7 @@ export default function AdminOrders() {
                 <div className="border-t border-border mt-4 pt-3 flex justify-between items-center text-xs">
                   <span className="text-[10px] text-slate-400 font-bold uppercase">Estimated Gross Value</span>
                   <span className="text-base font-black text-slate-950 font-display">
-                    ₹{o.total_amount.toLocaleString('en-IN')}
+                    ₹{(Number(o.total_amount) || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
               </motion.div>

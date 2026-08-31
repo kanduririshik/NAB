@@ -458,22 +458,22 @@ export const api = {
     const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
     
-    return data.map(o => ({
+    return (data || []).map(o => ({
       id: o.id,
       userId: o.user_id,
       customerName: o.customer_name,
       phone: o.phone,
       email: o.email,
       deliveryAddress: o.delivery_address,
-      status: o.status,
-      totalAmount: o.total_amount,
+      status: o.status || 'Pending',
+      totalAmount: Number(o.total_amount) || 0,
       createdAt: o.created_at,
-      items: o.items.map(item => ({
+      items: (o.items || []).map(item => ({
         productId: item.product_id,
         productName: item.product_name_snapshot,
         productImage: item.product_image_snapshot,
-        price: item.unit_price,
-        quantity: item.quantity
+        price: Number(item.unit_price) || 0,
+        quantity: Number(item.quantity) || 1
       }))
     }));
   },
@@ -481,8 +481,8 @@ export const api = {
   async submitOrder(userId, shippingDetails, cartItems) {
     const orderId = `ord-${Math.floor(1000 + Math.random() * 9000)}`;
     let totalAmount = 0;
-    cartItems.forEach(item => {
-      totalAmount += item.product.price * item.quantity;
+    (cartItems || []).forEach(item => {
+      totalAmount += (Number(item.product?.price) || 0) * (Number(item.quantity) || 1);
     });
 
     // 1. Insert parent order (Initially status = Pending)
@@ -490,11 +490,11 @@ export const api = {
       .from('orders')
       .insert({
         id: orderId,
-        user_id: userId === 'anonymous' ? null : userId,
-        customer_name: shippingDetails.fullName,
-        phone: shippingDetails.phone,
-        email: shippingDetails.email,
-        delivery_address: shippingDetails.deliveryAddress,
+        user_id: (!userId || userId === 'anonymous') ? null : userId,
+        customer_name: shippingDetails.fullName || 'Customer',
+        phone: shippingDetails.phone || '',
+        email: shippingDetails.email || '',
+        delivery_address: shippingDetails.deliveryAddress || '',
         status: 'Pending',
         total_amount: totalAmount
       });
@@ -502,21 +502,23 @@ export const api = {
     if (orderErr) throw orderErr;
 
     // 2. Insert order items
-    const itemsToInsert = cartItems.map(item => ({
+    const itemsToInsert = (cartItems || []).map(item => ({
       order_id: orderId,
       product_id: item.product.id,
       product_name_snapshot: item.product.name,
       product_image_snapshot: item.product.image || '',
-      quantity: item.quantity,
-      unit_price: item.product.price,
-      subtotal: item.product.price * item.quantity
+      quantity: Number(item.quantity) || 1,
+      unit_price: Number(item.product.price) || 0,
+      subtotal: (Number(item.product.price) || 0) * (Number(item.quantity) || 1)
     }));
     
-    const { error: itemsErr } = await supabase
-      .from('order_items')
-      .insert(itemsToInsert);
-      
-    if (itemsErr) throw itemsErr;
+    if (itemsToInsert.length > 0) {
+      const { error: itemsErr } = await supabase
+        .from('order_items')
+        .insert(itemsToInsert);
+        
+      if (itemsErr) throw itemsErr;
+    }
 
     return {
       id: orderId,
@@ -528,12 +530,12 @@ export const api = {
       status: 'Pending',
       totalAmount,
       createdAt: new Date().toISOString(),
-      items: cartItems.map(item => ({
+      items: (cartItems || []).map(item => ({
         productId: item.product.id,
         productName: item.product.name,
         productImage: item.product.image || '',
-        price: item.product.price,
-        quantity: item.quantity
+        price: Number(item.product.price) || 0,
+        quantity: Number(item.quantity) || 1
       }))
     };
   },
@@ -570,14 +572,14 @@ export const api = {
       email: data.email,
       deliveryAddress: data.delivery_address,
       status: data.status,
-      totalAmount: data.total_amount,
+      totalAmount: Number(data.total_amount) || 0,
       createdAt: data.created_at,
-      items: data.items.map(item => ({
+      items: (data.items || []).map(item => ({
         productId: item.product_id,
         productName: item.product_name_snapshot,
         productImage: item.product_image_snapshot,
-        price: item.unit_price,
-        quantity: item.quantity
+        price: Number(item.unit_price) || 0,
+        quantity: Number(item.quantity) || 1
       }))
     };
   },
