@@ -78,10 +78,24 @@ export const Order = {
     let list = [];
     if (isStaffOrAdminPath || adminSession || staffSession) {
       list = await api.getOrders();
-    } else if (userSession) {
-      list = await api.getOrders(userSession.id);
     } else {
-      list = [];
+      let currentUserId = userSession?.id;
+      let currentUserEmail = userSession?.email;
+      
+      // Fallback directly to Supabase auth session if local state hasn't hydrated
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          currentUserId = currentUserId || session.user.id;
+          currentUserEmail = currentUserEmail || session.user.email;
+        }
+      } catch (e) {}
+
+      if (currentUserId || currentUserEmail) {
+        list = await api.getOrders(currentUserId, currentUserEmail);
+      } else {
+        list = [];
+      }
     }
     
     if (orderBy.includes('created_date') || orderBy.includes('createdAt')) {
@@ -121,13 +135,30 @@ export const Order = {
     }));
   },
   create: async (data) => {
-    const userSession = JSON.parse(sessionStorage.getItem('nab_session_user') || localStorage.getItem('nab_session_user') || 'null');
-    const userId = userSession ? userSession.id : 'anonymous';
+    let userId = null;
+    let userEmail = data.customer_email;
+    
+    // Check Supabase active auth session first
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        userId = session.user.id;
+        userEmail = userEmail || session.user.email;
+      }
+    } catch (e) {}
+
+    if (!userId) {
+      const userSession = JSON.parse(sessionStorage.getItem('nab_session_user') || localStorage.getItem('nab_session_user') || 'null');
+      if (userSession?.id) {
+        userId = userSession.id;
+        userEmail = userEmail || userSession.email;
+      }
+    }
     
     const shippingDetails = {
       fullName: data.customer_name,
       phone: data.customer_phone,
-      email: data.customer_email,
+      email: userEmail || data.customer_email,
       deliveryAddress: data.delivery_address
     };
     

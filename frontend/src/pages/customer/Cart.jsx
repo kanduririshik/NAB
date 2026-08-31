@@ -26,6 +26,17 @@ export default function Cart() {
     delivery_address: profile?.address || ''
   });
 
+  React.useEffect(() => {
+    if (profile || user) {
+      setForm(prev => ({
+        customer_name: prev.customer_name || profile?.fullName || '',
+        customer_phone: prev.customer_phone || profile?.phone || '',
+        customer_email: prev.customer_email || profile?.email || user?.email || '',
+        delivery_address: prev.delivery_address || profile?.address || ''
+      }));
+    }
+  }, [profile, user]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));

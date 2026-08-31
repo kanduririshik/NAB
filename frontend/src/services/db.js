@@ -446,13 +446,17 @@ export const api = {
   },
 
   // --- ORDERS ---
-  async getOrders(userId = null) {
+  async getOrders(userId = null, userEmail = null) {
     let query = supabase
       .from('orders')
       .select('*, items:order_items(*)');
       
-    if (userId) {
+    if (userId && userEmail) {
+      query = query.or(`user_id.eq.${userId},email.ilike.${userEmail}`);
+    } else if (userId) {
       query = query.eq('user_id', userId);
+    } else if (userEmail) {
+      query = query.ilike('email', userEmail);
     }
     
     const { data, error } = await query.order('created_at', { ascending: false });

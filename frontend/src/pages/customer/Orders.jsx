@@ -1,15 +1,27 @@
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Order } from '../../services/api';
+import { dbEvents } from '../../services/db';
 import { Clock, Eye, PhoneCall, CheckCircle, Truck, ClipboardList } from 'lucide-react';
 import { motion } from 'framer-motion';
 import SafeImage from '../../components/SafeImage';
 
 export default function Orders() {
+  const queryClient = useQueryClient();
+
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['myOrders'],
     queryFn: () => Order.list('-created_date', 50),
   });
+
+  useEffect(() => {
+    const unsub = dbEvents.subscribe('orders_update', () => {
+      queryClient.invalidateQueries({ queryKey: ['myOrders'] });
+    });
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [queryClient]);
 
   const getStatusBadge = (status) => {
     switch (status) {
