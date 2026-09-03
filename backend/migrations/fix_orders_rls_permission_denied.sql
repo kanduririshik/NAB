@@ -71,6 +71,114 @@ FOR ALL USING (
       )
     )
   )
-);
+-- Function to create confirmed auth user without sending email (bypasses Supabase 3/hour email rate limit)
+DROP FUNCTION IF EXISTS public.create_auth_user(text, text, text);
+
+CREATE OR REPLACE FUNCTION public.create_auth_user(p_email text, p_password text, p_role text DEFAULT 'customer')
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $function$
+declare
+  v_user_id uuid;
+  v_effective_role text;
+begin
+  -- Security check: only allow non-customer roles if caller is already an admin
+  IF p_role IN ('admin', 'delivery_boy', 'staff') AND NOT (public.is_admin(auth.uid())) THEN
+    v_effective_role := 'customer';
+  ELSE
+    v_effective_role := COALESCE(p_role, 'customer');
+  END IF;
+
+  -- Check if user already exists
+  SELECT id INTO v_user_id FROM auth.users WHERE LOWER(email) = LOWER(p_email) LIMIT 1;
+  
+  IF v_user_id IS NOT NULL THEN
+    -- If user already exists and caller is not admin, do not allow arbitrary password overwrite
+    IF NOT (public.is_admin(auth.uid())) THEN
+      RAISE EXCEPTION 'User already registered with this email.';
+    END IF;
+
+    UPDATE auth.users 
+    SET encrypted_password = crypt(p_password, gen_salt('bf')),
+        email_confirmed_at = COALESCE(email_confirmed_at, now()),
+        updated_at = now()
+    WHERE id = v_user_id;
+  ELSE
+    v_user_id := gen_random_uuid();
+    
+    INSERT INTO auth.users (
+      instance_id,
+      id,
+      aud,
+      role,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at,
+      confirmation_token,
+      recovery_token,
+      email_change_token_new,
+      email_change,
+      phone_change,
+      phone_change_token,
+      email_change_token_current,
+      reauthentication_token
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      v_user_id,
+      'authenticated',
+      'authenticated',
+      LOWER(p_email),
+      crypt(p_password, gen_salt('bf')),
+      now(),
+      '{"provider":"email","providers":["email"]}',
+      '{}',
+      now(),
+      now(),
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      ''
+    );
+    
+    INSERT INTO auth.identities (
+      id,
+      user_id,
+      identity_data,
+      provider,
+      provider_id,
+      last_sign_in_at,
+      created_at,
+      updated_at
+    ) VALUES (
+      v_user_id,
+      v_user_id,
+      jsonb_build_object('sub', v_user_id::text, 'email', LOWER(p_email)),
+      'email',
+      LOWER(p_email),
+      now(),
+      now(),
+      now()
+    );
+  END IF;
+  
+  -- Insert/update user_roles
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (v_user_id, v_effective_role)
+  ON CONFLICT (user_id) DO UPDATE SET role = v_effective_role;
+  
+  RETURN v_user_id;
+end;
+$function$;
+
+GRANT EXECUTE ON FUNCTION public.create_auth_user(text, text, text) TO anon, authenticated, service_role;
 
 COMMIT;

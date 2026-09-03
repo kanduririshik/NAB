@@ -194,8 +194,69 @@ export const api = {
   },
 
   async register(email, password) {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
+    const cleanEmail = (email || '').trim().toLowerCase();
+    
+    // First try direct registration via create_auth_user RPC to bypass Supabase email rate limits
+    try {
+      const { data: rpcUserId, error: rpcErr } = await supabase.rpc('create_auth_user', {
+        p_email: cleanEmail,
+        p_password: password,
+        p_role: 'customer'
+      });
+
+      if (!rpcErr && rpcUserId) {
+        // Automatically sign in the user to obtain an active session
+        const { data: loginData, error: loginErr } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password
+        });
+        if (!loginErr && loginData?.user) {
+          return loginData.user;
+        }
+        return { id: rpcUserId, email: cleanEmail, role: 'customer' };
+      } else if (rpcErr && rpcErr.message?.includes('already registered')) {
+        throw new Error('User already registered with this email.');
+      }
+    } catch (rpcCatch) {
+      if (rpcCatch.message?.includes('already registered')) {
+        throw rpcCatch;
+      }
+      console.warn('Direct auth registration fallback to signUp:', rpcCatch);
+    }
+
+    // Standard Supabase signUp fallback
+    const { data, error } = await supabase.auth.signUp({ email: cleanEmail, password });
+    if (error) {
+      // If Supabase throws email rate limit exceeded, retry with RPC explicitly
+      if (error.message?.toLowerCase().includes('rate limit') || error.status === 429) {
+        const { data: rpcUserId, error: rpcErr2 } = await supabase.rpc('create_auth_user', {
+          p_email: cleanEmail,
+          p_password: password,
+          p_role: 'customer'
+        });
+        if (rpcErr2) throw rpcErr2;
+
+        const { data: loginData, error: loginErr } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password
+        });
+        if (loginErr) throw loginErr;
+        return loginData.user;
+      }
+      throw error;
+    }
+
+    // If signUp succeeded, auto-login if session is not active
+    if (data?.user) {
+      try {
+        const { data: loginData } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password
+        });
+        if (loginData?.user) return loginData.user;
+      } catch (e) {}
+    }
+
     return data.user;
   },
 
