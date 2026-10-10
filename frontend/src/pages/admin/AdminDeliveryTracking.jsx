@@ -334,11 +334,10 @@ export default function AdminDeliveryTracking() {
           attributionControl: false
         });
 
-        // Add CartoDB Voyager tiles (crisp, beautiful, modern tiles)
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        // Add official OpenStreetMap tiles (completely free, zero API key required)
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
-          subdomains: 'abcd',
-          attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
         L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -938,7 +937,7 @@ export default function AdminDeliveryTracking() {
                   <ShieldCheck size={14} className="text-amber-600" /> Zero-Config OpenStreetMap is active!
                 </p>
                 <p className="text-[11px] text-amber-700">
-                  OpenStreetMap / CartoDB tiles are completely free, requires no API key, and works out-of-the-box. Enter a Google Maps API key below only if you prefer Google Maps.
+                  OpenStreetMap tiles are completely free, require no API key, and work out-of-the-box. Enter a Google Maps API key below only if you prefer Google Maps.
                 </p>
               </div>
 
