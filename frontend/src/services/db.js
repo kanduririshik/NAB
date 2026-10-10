@@ -788,7 +788,8 @@ export const api = {
   async addAgent(agentData) {
     // 1. Create auth user securely using internal @nab.in email to prevent conflicts with personal emails
     const rawUsername = (agentData.username || agentData.fullName || 'staff').trim().toLowerCase().replace(/\s+/g, '');
-    const internalAuthEmail = `${rawUsername}@nab.in`;
+    const cleanUsername = rawUsername.includes('@') ? rawUsername.split('@')[0] : rawUsername;
+    const internalAuthEmail = `${cleanUsername}@nab.in`;
     const contactEmail = agentData.email ? agentData.email.trim().toLowerCase() : internalAuthEmail;
     const agentPassword = agentData.password || 'password123';
     
@@ -809,7 +810,7 @@ export const api = {
       .upsert({
         id: userId,
         full_name: agentData.fullName,
-        username: agentData.username,
+        username: cleanUsername,
         phone: agentData.phone,
         email: contactEmail,
         address: agentData.address,
@@ -856,6 +857,10 @@ export const api = {
       status: agentData.status,
       updated_at: new Date().toISOString()
     };
+    if (agentData.username) {
+      const rawUser = agentData.username.trim().toLowerCase();
+      updateFields.username = rawUser.includes('@') ? rawUser.split('@')[0] : rawUser;
+    }
     if (agentData.email) {
       updateFields.email = agentData.email.trim().toLowerCase();
     }
@@ -871,18 +876,19 @@ export const api = {
 
     // Update login password and/or auth email in auth.users if provided
     const hasPassword = agentData.password && agentData.password.trim().length > 0;
-    const username = data.username || agentData.username || '';
-    const staffAuthEmail = username ? `${username.trim().toLowerCase()}@nab.in` : null;
+    const rawUsername = (data.username || agentData.username || '').trim().toLowerCase();
+    const cleanUsername = rawUsername.includes('@') ? rawUsername.split('@')[0] : rawUsername;
+    const staffAuthEmail = cleanUsername ? `${cleanUsername}@nab.in` : null;
 
     if (hasPassword || staffAuthEmail) {
-      try {
-        await supabase.rpc('admin_update_auth_user', {
-          p_user_id: id,
-          p_password: hasPassword ? agentData.password.trim() : null,
-          p_email: staffAuthEmail
-        });
-      } catch (authErr) {
-        console.warn('Could not sync auth user credentials:', authErr);
+      const { error: rpcErr } = await supabase.rpc('admin_update_auth_user', {
+        p_user_id: id,
+        p_password: hasPassword ? agentData.password.trim() : null,
+        p_email: staffAuthEmail
+      });
+      if (rpcErr) {
+        console.error('Failed to sync auth user credentials:', rpcErr);
+        throw new Error(rpcErr.message || 'Failed to update login credentials');
       }
     }
     
@@ -1148,22 +1154,30 @@ export const api = {
 
     const cleanUser = input.includes('@') ? input.split('@')[0] : input;
 
-    // Check if there is an agent record with this username or email
-    const { data: agentRecord } = await supabase
-      .from('delivery_agents')
-      .select('*')
-      .or(`username.ilike.${cleanUser},email.ilike.${input}`)
-      .maybeSingle();
+    // 1. Resolve exact auth email via SECURITY DEFINER RPC to bypass RLS for unauthenticated clients
+    let resolvedEmail = null;
+    try {
+      const { data: emailFromRpc } = await supabase.rpc('get_staff_login_email', {
+        p_identifier: input
+      });
+      if (emailFromRpc) {
+        resolvedEmail = emailFromRpc;
+      }
+    } catch (rpcErr) {
+      console.warn('get_staff_login_email RPC failed, using candidate fallback:', rpcErr);
+    }
 
-    const candidateEmails = [
+    // 2. Build candidate emails list
+    const candidateEmails = [];
+    if (resolvedEmail) {
+      candidateEmails.push(resolvedEmail.toLowerCase());
+    }
+    candidateEmails.push(
       `${cleanUser.toLowerCase()}@nab.in`,
       input.toLowerCase()
-    ];
-    if (agentRecord?.username) {
-      candidateEmails.unshift(`${agentRecord.username.trim().toLowerCase()}@nab.in`);
-    }
-    if (agentRecord?.email) {
-      candidateEmails.push(agentRecord.email.trim().toLowerCase());
+    );
+    if (input.includes('@')) {
+      candidateEmails.push(`${input.toLowerCase()}@nab.in`);
     }
 
     const uniqueEmails = [...new Set(candidateEmails.filter(Boolean))];
@@ -1205,14 +1219,19 @@ export const api = {
     }
 
     // Load agent profile
-    let agent = agentRecord;
+    let { data: agent } = await supabase
+      .from('delivery_agents')
+      .select('*')
+      .eq('id', authData.user.id)
+      .maybeSingle();
+
     if (!agent) {
-      const { data: agentById } = await supabase
+      const { data: fallbackAgent } = await supabase
         .from('delivery_agents')
         .select('*')
-        .eq('id', authData.user.id)
+        .or(`username.ilike.${cleanUser},email.ilike.${input}`)
         .maybeSingle();
-      agent = agentById;
+      agent = fallbackAgent;
     }
 
     if (!agent) {
