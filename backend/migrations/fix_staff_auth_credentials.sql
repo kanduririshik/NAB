@@ -65,14 +65,14 @@ CREATE OR REPLACE FUNCTION public.admin_update_auth_user(
 RETURNS boolean
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, auth
+SET search_path = public, auth, extensions
 AS $$
 DECLARE
   v_clean_email text;
 BEGIN
   IF p_password IS NOT NULL AND LENGTH(TRIM(p_password)) > 0 THEN
     UPDATE auth.users
-    SET encrypted_password = crypt(p_password, gen_salt('bf')),
+    SET encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf')),
         updated_at = now()
     WHERE id = p_user_id;
   END IF;
